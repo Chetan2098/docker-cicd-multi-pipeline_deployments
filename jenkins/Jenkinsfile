@@ -4,6 +4,7 @@ pipeline {
     environment {
         REGISTRY   = "docker.io/kube20"
         IMAGE_NAME = "test-local-app:latest"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
     }
 
     stages {
@@ -16,35 +17,36 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    dockerImage = docker.build("${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}")
+                bat "docker build -t %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG% ."
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-cred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    bat "docker login -u %DOCKER_USER% -p %DOCKER_PASS%"
                 }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                script {
-                    docker.withRegistry("https://${REGISTRY}", 'dockerhub-cred') {
-                        dockerImage.push("${BUILD_NUMBER}")
-                        dockerImage.push("latest")
-                    }
-                }
+                bat """
+                docker push %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%
+                docker tag %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG% %REGISTRY%/%IMAGE_NAME%:latest
+                docker push %REGISTRY%/%IMAGE_NAME%:latest
+                """
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat """
-                kubectl set image deployment/cicd-demo cicd-demo=${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} --record
-                """
+                bat "kubectl set image deployment/cicd-demo cicd-demo=%REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%"
             }
-        }
-    }
-
-    post {
-        success {
-            echo "Pipeline successfully executed!"
         }
     }
 }
