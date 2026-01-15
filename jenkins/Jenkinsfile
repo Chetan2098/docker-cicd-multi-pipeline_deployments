@@ -17,7 +17,8 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                bat "docker build -t test-local-app -f app/Dockerfile ."
+                // Build image with proper tag
+                bat "docker build -t %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG% -f app/Dockerfile ."
             }
         }
 
@@ -37,8 +38,8 @@ pipeline {
             steps {
                 bat """
                 docker push %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%
-                docker tag %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG% %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%
-                docker push %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%
+                docker tag %REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG% %REGISTRY%/%IMAGE_NAME%:latest
+                docker push %REGISTRY%/%IMAGE_NAME%:latest
                 """
             }
         }
