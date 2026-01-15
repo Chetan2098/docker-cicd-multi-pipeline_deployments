@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         REGISTRY   = "docker.io/kube20"
-        IMAGE_NAME = "test-local-app:latest"
+        IMAGE_NAME = "test-local-app"
         IMAGE_TAG  = "${BUILD_NUMBER}"
     }
 
