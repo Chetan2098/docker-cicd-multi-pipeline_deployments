@@ -43,17 +43,20 @@ pipeline {
                 """
             }
         }
-
+        stage('K8s Connectivity Test') {
+            steps {
+                bat 'kubectl --kubeconfig="C:\\ProgramData\\Jenkins\\.kube\\config" get nodes'
+            }
+        }
         stage('Deploy to Kubernetes') {
             steps {
                 bat """
-                    kubectl --kubeconfig="C:\\ProgramData\\Jenkins\\.kube\\config" ^
-                    set image deployment/cicd-demo cicd-demo=%REGISTRY%/%IMAGE_NAME%:%BUILD_NUMBER%
-                    """
+                kubectl --kubeconfig="C:\\ProgramData\\Jenkins\\.kube\\config" ^
+                set image deployment/cicd-demo cicd-demo=%REGISTRY%/%IMAGE_NAME%:%IMAGE_TAG%
+                """
             }
         }
     }
-
     post {
         success {
             echo "Pipeline completed successfully! 🚀"
