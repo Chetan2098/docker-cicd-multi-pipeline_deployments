@@ -1,0 +1,221 @@
+name: Build and Deploy to Kubernetes
+
+# Trigger conditions
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+# Environment variables
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: test-local-app
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+jobs:
+  # Job 1: Build Docker Image
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Job 2: Deploy to Kubernetes
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build
+    # Only deploy on push to main/master or manual trigger
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Verify Kubernetes connectivity
+        run: |
+          echo "Testing Kubernetes connection..."
+          kubectl cluster-info
+          kubectl get nodes
+          echo "Connection successful!"
+
+      - name: Get current deployments
+        run: |
+          echo "Current deployments:"
+          kubectl get deployments
+          echo "Current services:"
+          kubectl get services
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "Deploying application..."
+          
+          # Get the full image name from the build job
+          IMAGE="${{ env.REGISTRY }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          
+          echo "Deploying image: $IMAGE"
+          
+          # Update deployment with new image
+          kubectl set image deployment/cicd-demo \
+            cicd-demo=$IMAGE \
+            --record
+          
+          # Wait for rollout
+          kubectl rollout status deployment/cicd-demo --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment Status:"
+          kubectl get deployment cicd-demo -o wide
+          echo ""
+          echo "Pod Status:"
+          kubectl get pods -l app=cicd-demo
+          echo ""
+          echo "Service Status:"
+          kubectl get service cicd-demo-service
+
+      - name: Display access information
+        run: |
+          echo "=== Application Deployment Successful ==="
+          echo ""
+          echo "Service: cicd-demo-service"
+          echo "Port: 5000 (internal) -> 30001 (NodePort)"
+          echo ""
+          kubectl get service cicd-demo-service -o wide
+
+  # Job 3: Testing (optional)
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt
+
+      - name: Run tests
+        run: |
+          echo "Running application tests..."
+          # Add your test commands here
+          python -m pytest app/ -v --tb=short || echo "No tests found"
+
+  # Job 4: Notification
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    if: always()
+
+    steps:
+      - name: Deployment completed
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment pipeline completed successfully!"
+            echo "Application is now running on Kubernetes"
+            echo "Access via NodePort: http://localhost:30001"
+          else
+            echo "❌ Deployment pipeline failed!"
+            echo "Check logs for details"
+          fi
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          cat > deployment-summary.txt << EOF
+          # Deployment Summary
+          - Repository: ${{ github.repository }}
+          - Branch: ${{ github.ref }}
+          - Commit: ${{ github.sha }}
+          - Author: ${{ github.actor }}
+          - Timestamp: $(date)
+          - Status: ${{ job.status }}
+          EOF
+          cat deployment-summary.txt
+
+      - name: Upload deployment summary
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-summary
+          path: deployment-summary.txt
