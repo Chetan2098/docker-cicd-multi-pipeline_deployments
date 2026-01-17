@@ -3,8 +3,86 @@
 ## Project Overview
 This project demonstrates the deployment of an application on Kubernetes using CI/CD pipelines managed by Jenkins. The primary goal is to automate the deployment process, ensuring efficient management of application updates and minimizing downtime.
 
-## Architecture Diagram
-![Architecture Diagram](diagrams/architecture.md)
+## Architecture & Workflow Diagram
+
+### High-Level Architecture
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Development Environment                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  GitHub Repository                                      │   │
+│  │  - Source Code (app.py)                                │   │
+│  │  - Jenkinsfile                                         │   │
+│  │  - Kubernetes Configs                                 │   │
+│  └─────────────────┬───────────────────────────────────────┘   │
+└────────────────────┼──────────────────────────────────────────────┘
+                     │ Git Webhook Trigger
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       Jenkins CI/CD Pipeline                     │
+│  ┌──────────────┐      ┌──────────────┐     ┌──────────────┐   │
+│  │  1. Clone    │ ───► │  2. Build &  │ ──► │  3. Push to  │   │
+│  │  Repository  │      │  Test Code   │     │  Registry    │   │
+│  └──────────────┘      └──────────────┘     └──────────────┘   │
+│                                                    │              │
+│                                                    ▼              │
+│                                         ┌──────────────────┐    │
+│                                         │  Docker Image    │    │
+│                                         │  Created & Pushed│    │
+│                                         └──────────────────┘    │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │ Deploy Command
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Kubernetes Cluster Deployment                   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Kubernetes Deployment (deployment.yaml)               │   │
+│  │  - Pull Docker Image                                   │   │
+│  │  - Create & Run Pods                                   │   │
+│  │  - Manage Replicas                                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Kubernetes Service (service.yaml)                      │   │
+│  │  - Expose Port 5000                                    │   │
+│  │  - Route Traffic (NodePort: 30001)                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │  Live Application   │
+                  │  (Accessible to     │
+                  │   Users)            │
+                  └─────────────────────┘
+```
+
+### CI/CD Workflow Process
+```
+START
+  │
+  ├──► Code Commit to GitHub
+  │
+  ├──► Jenkins Webhook Trigger
+  │
+  ├──► Build Stage
+  │    ├─ Clone Repository
+  │    ├─ Install Dependencies (requirements.txt)
+  │    └─ Build Docker Image
+  │
+  ├──► Test Stage
+  │    ├─ Run Unit Tests
+  │    └─ Validate Application
+  │
+  ├──► Push Stage
+  │    └─ Push Docker Image to Registry
+  │
+  ├──► Deploy Stage
+  │    ├─ Apply Kubernetes Deployment
+  │    ├─ Apply Kubernetes Service
+  │    └─ Verify Pod Status
+  │
+  └──► END (Application Live on Port 30001)
+```
 
 ## Folder Structure
 The project is organized into several key directories:
