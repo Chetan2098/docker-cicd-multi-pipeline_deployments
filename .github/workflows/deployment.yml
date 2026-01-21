@@ -76,8 +76,7 @@ jobs:
     name: Deploy to Kubernetes
     runs-on: ubuntu-latest
     needs: build
-    # Only deploy on push to main/master or manual trigger
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
@@ -101,113 +100,97 @@ jobs:
           kubectl get nodes
           echo "Connection successful!"
 
-      - name: Get current deployments
+      - name: Deploy to Kubernetes with new image
         run: |
-          echo "Current deployments:"
-          kubectl get deployments
-          echo "Current services:"
-          kubectl get services
-          kubectl get nodes
-          echo "Connection successful!"
-        run: |
-      - name: Get current deployments..."
-        run: |
-          echo "Current deployments:"rom the build job
-          kubectl get deployments }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
-          echo "Current services:"
-          kubectl get servicese: $IMAGE"
-          
-      - name: Deploy to Kubernetes new image
-        run: |ctl set image deployment/cicd-demo \
           echo "Deploying application..."
-            --record
-          # Get the full image name from the build job
           IMAGE="${{ env.REGISTRY }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
-          kubectl rollout status deployment/cicd-demo --timeout=5m
           echo "Deploying image: $IMAGE"
-          me: Verify deployment
-          # Update deployment with new image
           kubectl set image deployment/cicd-demo \
-            cicd-demo=$IMAGE \nt cicd-demo -o wide
+            cicd-demo=$IMAGE \
             --record
-          echo "Pod Status:"
-          # Wait for rolloutl app=cicd-demo
           kubectl rollout status deployment/cicd-demo --timeout=5m
-          echo "Service Status:"
-      - name: Verify deploymenticd-demo-service
+
+      - name: Verify deployment
         run: |
-          echo "Deployment Status:"ation
+          echo "Deployment Status:"
           kubectl get deployment cicd-demo -o wide
-          echo ""== Application Deployment Successful ==="
+          echo ""
           echo "Pod Status:"
           kubectl get pods -l app=cicd-demo
-          echo ""ort: 5000 (internal) -> 30001 (NodePort)"
+          echo ""
           echo "Service Status:"
           kubectl get service cicd-demo-service -o wide
 
       - name: Display access information
         run: |
           echo "=== Application Deployment Successful ==="
-          echo ""tu-latest
+          echo ""
           echo "Service: cicd-demo-service"
           echo "Port: 5000 (internal) -> 30001 (NodePort)"
           echo ""
           kubectl get service cicd-demo-service -o wide
-        uses: actions/checkout@v4
-  # Job 3: Testing (optional)
-  test: name: Set up Python
-    name: Run Testsns/setup-python@v4
-    runs-on: ubuntu-latest
-    needs: build-version: '3.10'
 
-    steps:me: Install dependencies
+  # Job 3: Testing
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
       - name: Checkout code
-        uses: actions/checkout@v4-upgrade pip
-          pip install -r app/requirements.txt
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
-        with:|
-          python-version: '3.10'ion tests..."
-          # Add your test commands here
-      - name: Install dependencies --tb=short || echo "No tests found"
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r app/requirements.txt
-    name: Send Notifications
-      - name: Run testsest
-        run: |ild, deploy]
+
+      - name: Run tests
+        run: |
           echo "Running application tests..."
-          # Add your test commands here
           python -m pytest app/ -v --tb=short || echo "No tests found"
-      - name: Deployment completed
+
   # Job 4: Notification
-  notify: if [ "${{ job.status }}" == "success" ]; then
-    name: Send Notificationsnt pipeline completed successfully!"
-    runs-on: ubuntu-latestion is now running on Kubernetes"
-    needs: [build, deploy]ia NodePort: http://localhost:30001"
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [build, deploy, test]
     if: always()
-            echo "❌ Deployment pipeline failed!"
-    steps:  echo "Check logs for details"
+
+    steps:
       - name: Deployment completed
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Deployment pipeline completed successfully!"
             echo "Application is now running on Kubernetes"
             echo "Access via NodePort: http://localhost:30001"
-          elseployment Summary
+          else
             echo "❌ Deployment pipeline failed!"
             echo "Check logs for details"
-          fiCommit: ${{ github.sha }}
-          - Author: ${{ github.actor }}
+          fi
+
       - name: Create deployment summary
-        if: always()${{ job.status }}
+        if: always()
         run: |
           cat > deployment-summary.txt << EOF
           # Deployment Summary
           - Repository: ${{ github.repository }}
           - Branch: ${{ github.ref }}
-          - Commit: ${{ github.sha }}@v3
+          - Commit: ${{ github.sha }}
           - Author: ${{ github.actor }}
-          - Timestamp: $(date)mary
-          - Status: ${{ job.status }}t
-          EOF          cat deployment-summary.txt      - name: Upload deployment summary        if: always()        uses: actions/upload-artifact@v3        with:          name: deployment-summary          path: deployment-summary.txt
+          - Timestamp: $(date)
+          - Status: ${{ job.status }}
+          EOF
+          cat deployment-summary.txt
+
+      - name: Upload deployment summary
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-summary
+          path: deployment-summary.txt
